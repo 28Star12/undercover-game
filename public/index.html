@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Undercover Online</title>
+  <!-- On garde socket.io pour le futur serveur -->
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
@@ -89,10 +90,11 @@
       background: #1e293b;
       color: var(--muted);
       cursor: not-allowed;
+      opacity: 0.5;
     }
 
     .hidden {
-      display: none;
+      display: none !important;
     }
 
     .chat-box {
@@ -181,26 +183,26 @@
     <div id="loginSection" class="card">
       <label>Ton pseudo</label>
       <input id="playerName" type="text" placeholder="Pseudo..." maxlength="12">
-      <button id="joinBtn">Rejoindre</button>
+      <button id="joinBtn">Rejoindre la partie</button>
     </div>
 
     <!-- LOBBY -->
     <div id="lobbySection" class="card hidden">
-      <h3>Joueurs connectés</h3>
+      <h3>Joueurs dans le salon</h3>
       <ul id="playerList" class="player-list"></ul>
       <div id="hostControls" class="hidden">
-        <label>Undercovers</label>
+        <label>Nombre d'Undercovers</label>
         <input id="uCount" type="number" value="1" min="1" max="3">
-        <label>Mr White ?</label>
+        <label>Ajouter un Mr White ?</label>
         <select id="whiteEnabled"><option value="no">Non</option><option value="yes">Oui</option></select>
-        <button id="startBtn">LANCER</button>
+        <button id="startBtn">LANCER LE JEU</button>
       </div>
-      <p id="waitMsg" class="muted center">En attente du chef...</p>
+      <p id="waitMsg" class="muted center">En attente du chef de groupe...</p>
     </div>
 
     <!-- JEU & CHAT -->
     <div id="gameSection" class="card hidden">
-      <div style="display:flex; justify-content: space-between; align-items: center;">
+      <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <span id="displayRole" class="badge">ROLE</span>
         <span id="displayWord" style="font-weight: bold; color: var(--accent);">MOT</span>
       </div>
@@ -210,20 +212,22 @@
       <div id="chatBox" class="chat-box"></div>
       
       <div id="inputArea">
-        <input id="wordInput" type="text" placeholder="Ton indice..." maxlength="20">
+        <input id="wordInput" type="text" placeholder="Tape ton indice ici..." maxlength="20">
         <button id="sendBtn">Envoyer mon indice</button>
       </div>
 
-      <div id="hostGameControls" class="hidden" style="margin-top: 15px;">
-        <button id="triggerVoteBtn" style="background: var(--danger); color: white;">Fin de discussion / Voter</button>
+      <div id="hostGameControls" class="hidden" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+        <p style="font-size: 12px; color: var(--muted); text-align: center;">Contrôles de l'Hôte</p>
+        <button id="triggerVoteBtn" style="background: var(--danger); color: white;">Passer au Vote maintenant</button>
       </div>
     </div>
 
     <!-- VOTE -->
     <div id="voteSection" class="card hidden">
       <h3 class="center">Qui est l'imposteur ?</h3>
+      <p style="font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 15px;">Votez stratégiquement selon les indices donnés.</p>
       <ul id="voteList" class="vote-list"></ul>
-      <p id="voteStatus" class="center muted">Vote en cours...</p>
+      <p id="voteStatus" class="center muted">En attente des votes...</p>
     </div>
 
     <!-- RÉVÉLATION -->
@@ -234,13 +238,23 @@
         <p id="revealRoleText" class="muted">---</p>
         <div id="revealWordBox" class="word-display">---</div>
         <button id="nextRoundBtn" class="hidden">Tour suivant</button>
-        <p id="waitHostNext" class="muted">En attente du tour suivant...</p>
+        <p id="waitHostNext" class="muted">L'hôte va lancer la suite...</p>
       </div>
     </div>
   </div>
 
   <script>
-    const socket = io();
+    /**
+     * LOGIQUE CLIENT ET SIMULATION
+     */
+    let socket;
+    try {
+        socket = io();
+    } catch(e) {
+        console.warn("Socket.io non trouvé, passage en mode démo locale.");
+        socket = { emit: () => {}, on: () => {} }; // Mock pour éviter les erreurs
+    }
+
     const sections = {
       login: document.getElementById('loginSection'),
       lobby: document.getElementById('lobbySection'),
@@ -249,122 +263,134 @@
       result: document.getElementById('resultSection')
     };
 
-    let isMyTurn = false;
+    let isMyTurn = true; // Par défaut vrai pour tester
     let isHost = false;
+    let myName = "";
 
     function showSection(name) {
       Object.values(sections).forEach(s => s.classList.add('hidden'));
       sections[name].classList.remove('hidden');
     }
 
-    // --- ACTIONS ---
+    // --- ACTIONS BOUTONS ---
+
     document.getElementById('joinBtn').onclick = () => {
-      const name = document.getElementById('playerName').value.trim();
-      if(name) { socket.emit('joinGame', name); showSection('lobby'); }
+      myName = document.getElementById('playerName').value.trim();
+      if(!myName) return alert("Choisis un pseudo !");
+      
+      socket.emit('joinGame', myName);
+      showSection('lobby');
+
+      // SIMULATION LOCALE : On fait comme si on était l'hôte pour tester
+      isHost = true;
+      document.getElementById('hostControls').classList.remove('hidden');
+      document.getElementById('waitMsg').classList.add('hidden');
+      updateLobbyUI([{name: myName, id: 'me', isHost: true}]);
     };
 
     document.getElementById('startBtn').onclick = () => {
+      // Émet au serveur
       socket.emit('requestStart', {
         uCount: parseInt(document.getElementById('uCount').value),
         whiteEnabled: document.getElementById('whiteEnabled').value === 'yes'
       });
+
+      // SIMULATION LOCALE : Lance le jeu immédiatement pour test
+      const testData = {
+        role: "Citoyen",
+        word: "Chocolat"
+      };
+      startGameUI(testData);
     };
 
     document.getElementById('sendBtn').onclick = () => {
       const val = document.getElementById('wordInput').value.trim();
       if(val && isMyTurn) {
+        // Envoi au serveur
         socket.emit('sendWord', val);
+        
+        // SIMULATION LOCALE : Affiche le mot dans le chat directement
+        addChatMessage(myName, val);
         document.getElementById('wordInput').value = '';
       }
     };
 
-    document.getElementById('triggerVoteBtn').onclick = () => socket.emit('startVotePhase');
-    document.getElementById('nextRoundBtn').onclick = () => socket.emit('requestNextRound');
+    document.getElementById('triggerVoteBtn').onclick = () => {
+      socket.emit('startVotePhase');
+      // SIMULATION LOCALE
+      startVoteUI([{name: myName, id: 'me'}, {name: "Joueur 2", id: "j2"}]);
+    };
 
-    // --- SOCKETS ---
-    socket.on('lobbyUpdate', (players) => {
+    // --- MISE À JOUR UI ---
+
+    function updateLobbyUI(players) {
       const list = document.getElementById('playerList');
       list.innerHTML = players.map(p => `
         <li class="player-item">
-          <span>${p.name} ${p.id === socket.id ? '<b>(Toi)</b>' : ''}</span>
+          <span>${p.name}</span>
           ${p.isHost ? '<span class="badge">HÔTE</span>' : ''}
         </li>
       `).join('');
-      
-      const me = players.find(p => p.id === socket.id);
-      isHost = me?.isHost;
-      if(isHost) {
-        document.getElementById('hostControls').classList.remove('hidden');
-        document.getElementById('waitMsg').classList.add('hidden');
-      }
-    });
+    }
 
-    socket.on('gameStarted', (data) => {
+    function startGameUI(data) {
       showSection('game');
       document.getElementById('displayRole').textContent = data.role.toUpperCase();
-      document.getElementById('displayWord').textContent = data.role === 'mr_white' ? '???' : data.word;
+      document.getElementById('displayWord').textContent = data.word;
       document.getElementById('chatBox').innerHTML = '';
-      if(isHost) document.getElementById('hostGameControls').classList.remove('hidden');
-    });
-
-    socket.on('updateTurn', (turnData) => {
-      const indicator = document.getElementById('turnIndicator');
-      const input = document.getElementById('wordInput');
-      const btn = document.getElementById('sendBtn');
+      document.getElementById('turnIndicator').textContent = "À TOI DE DONNER UN INDICE !";
       
-      isMyTurn = (turnData.currentId === socket.id);
-      indicator.textContent = isMyTurn ? "À TOI DE PARLER !" : `C'est au tour de : ${turnData.currentName}`;
-      indicator.style.color = isMyTurn ? "var(--accent)" : "white";
-      
-      input.disabled = !isMyTurn;
-      btn.disabled = !isMyTurn;
-    });
+      if(isHost) {
+        document.getElementById('hostGameControls').classList.remove('hidden');
+      }
+    }
 
-    socket.on('newWord', (data) => {
+    function addChatMessage(name, word) {
       const chat = document.getElementById('chatBox');
-      chat.innerHTML += `<div class="chat-msg"><b>${data.name} :</b> ${data.word}</div>`;
+      const div = document.createElement('div');
+      div.className = 'chat-msg';
+      div.innerHTML = `<b>${name} :</b> ${word}`;
+      chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
-    });
+    }
 
-    socket.on('votePhaseStarted', (alivePlayers) => {
+    function startVoteUI(alivePlayers) {
       showSection('vote');
       const list = document.getElementById('voteList');
       list.innerHTML = alivePlayers
-        .filter(p => p.id !== socket.id)
         .map(p => `<li class="vote-item" onclick="castVote(this, '${p.id}')">${p.name}</li>`)
         .join('');
-    });
+    }
 
     window.castVote = (el, targetId) => {
       document.querySelectorAll('.vote-item').forEach(i => i.classList.remove('selected'));
       el.classList.add('selected');
       socket.emit('castVote', targetId);
+      
+      // Simulation fin
+      setTimeout(() => {
+        showSection('result');
+        document.getElementById('revealName').textContent = "Joueur 2";
+        document.getElementById('revealRoleText').textContent = "Était : UNDERCOVER";
+        document.getElementById('revealWordBox').textContent = "Nutella";
+      }, 1000);
     };
 
-    socket.on('playerEliminated', (data) => {
-      showSection('result');
-      document.getElementById('revealName').textContent = data.name;
-      document.getElementById('revealRoleText').textContent = `Était : ${data.role.toUpperCase()}`;
-      document.getElementById('revealWordBox').textContent = data.word || "???";
-      
-      if(isHost) {
-        document.getElementById('nextRoundBtn').classList.remove('hidden');
-        document.getElementById('waitHostNext').classList.add('hidden');
-      } else {
-        document.getElementById('nextRoundBtn').classList.add('hidden');
-        document.getElementById('waitHostNext').classList.remove('hidden');
-      }
+    // --- ÉCOUTEURS SOCKETS REELS ---
+
+    socket.on('lobbyUpdate', updateLobbyUI);
+    socket.on('gameStarted', startGameUI);
+    socket.on('newWord', (data) => addChatMessage(data.name, data.word));
+    socket.on('votePhaseStarted', startVoteUI);
+    
+    socket.on('updateTurn', (turnData) => {
+      isMyTurn = (turnData.currentId === socket.id);
+      const indicator = document.getElementById('turnIndicator');
+      indicator.textContent = isMyTurn ? "À TOI DE PARLER !" : `Attends ton tour (${turnData.currentName})`;
+      document.getElementById('wordInput').disabled = !isMyTurn;
+      document.getElementById('sendBtn').disabled = !isMyTurn;
     });
 
-    socket.on('gameOver', (data) => {
-      showSection('result');
-      document.getElementById('resultTitle').textContent = "FIN DE PARTIE";
-      document.getElementById('revealName').textContent = data.winner === 'citizens' ? "VICTOIRE CITOYENS" : "L'IMPOSTEUR A GAGNÉ";
-      document.getElementById('revealRoleText').textContent = "Redirection au lobby...";
-      setTimeout(() => location.reload(), 5000);
-    });
-
-    socket.on('errorMsg', (msg) => alert(msg));
   </script>
 </body>
 </html>
