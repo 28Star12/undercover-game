@@ -1,8 +1,6 @@
 {
-  "name": "undercover-online",
+  "name": "undercover-game",
   "version": "1.0.0",
-  "description": "Jeu Undercover en ligne",
-  "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },

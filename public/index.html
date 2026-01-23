@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Undercover Online</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>Undercover</h1>
+    <input id="name" placeholder="Ton pseudo">
+    <button onclick="rejoindre()">Rejoindre</button>
+
+    <script>
+        const socket = io();
+        function rejoindre() {
+            const name = document.getElementById('name').value;
+            socket.emit('joinGame', name);
+            alert("Tu as rejoint la partie !");
+        }
+    </script>
+</body>
+</html>
