@@ -11,6 +11,7 @@
       --card: #0b1220;
       --accent: #38bdf8;
       --muted: #94a3b8;
+      --danger: #ef4444;
       --glass: rgba(255,255,255,0.03);
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
@@ -84,21 +85,42 @@
       transition: transform 0.1s, opacity 0.2s;
     }
 
-    button:active {
-      transform: scale(0.98);
+    button:disabled {
+      background: #1e293b;
+      color: var(--muted);
+      cursor: not-allowed;
     }
 
     .hidden {
       display: none;
     }
 
-    .player-list {
+    .chat-box {
+      height: 200px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.2);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      border: 1px solid var(--glass);
+    }
+
+    .chat-msg {
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding-bottom: 4px;
+    }
+
+    .chat-msg b { color: var(--accent); }
+
+    .player-list, .vote-list {
       list-style: none;
       padding: 0;
       margin: 20px 0;
     }
 
-    .player-item {
+    .player-item, .vote-item {
       background: var(--glass);
       padding: 12px 16px;
       border-radius: 10px;
@@ -109,6 +131,14 @@
       border: 1px solid rgba(255,255,255,0.05);
     }
 
+    .vote-item {
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .vote-item:hover { border-color: var(--accent); }
+    .vote-item.selected { background: var(--accent); color: #000; }
+
     .badge {
       font-size: 10px;
       font-weight: 800;
@@ -116,88 +146,95 @@
       border-radius: 20px;
       background: var(--accent);
       color: #000;
-      text-transform: uppercase;
     }
 
-    .role-box {
+    .turn-indicator {
       text-align: center;
-      padding: 20px 0;
+      padding: 10px;
+      background: rgba(56, 189, 248, 0.1);
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-weight: bold;
     }
 
     .word-display {
-      font-size: 42px;
+      font-size: 36px;
       font-weight: 900;
       color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 3px;
-      margin: 20px 0;
-      text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
-    }
-
-    .instruction {
-      font-size: 14px;
-      color: var(--muted);
-      font-style: italic;
-    }
-
-    .muted {
-      color: var(--muted);
-    }
-
-    .center {
       text-align: center;
+      margin: 15px 0;
     }
+
+    .result-reveal {
+      text-align: center;
+      animation: fadeIn 0.5s;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>UNDERCOVER</h1>
 
-    <!-- ÉCRAN DE CONNEXION -->
+    <!-- CONNEXION -->
     <div id="loginSection" class="card">
-      <label for="playerName">Choisis ton pseudo</label>
-      <input id="playerName" type="text" placeholder="Ex: Alex" maxlength="12">
-      <button id="joinBtn">Rejoindre la partie</button>
+      <label>Ton pseudo</label>
+      <input id="playerName" type="text" placeholder="Pseudo..." maxlength="12">
+      <button id="joinBtn">Rejoindre</button>
     </div>
 
-    <!-- SALLE D'ATTENTE -->
+    <!-- LOBBY -->
     <div id="lobbySection" class="card hidden">
-      <div style="display:flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin:0">Joueurs</h3>
-        <span id="playerCount" class="muted" style="font-size:13px">0 joueur</span>
-      </div>
+      <h3>Joueurs connectés</h3>
       <ul id="playerList" class="player-list"></ul>
-      
-      <!-- RÉGLAGES HÔTE -->
       <div id="hostControls" class="hidden">
-        <div style="border-top: 1px solid var(--glass); padding-top: 15px; margin-top: 10px;">
-          <label for="uCount">Nombre d'Undercovers</label>
-          <input id="uCount" type="number" value="1" min="1" max="3">
-          
-          <label for="whiteEnabled">Inclure Mr White ?</label>
-          <select id="whiteEnabled">
-            <option value="no">Non</option>
-            <option value="yes">Oui</option>
-          </select>
-          <button id="startBtn">LANCER LA PARTIE</button>
-        </div>
+        <label>Undercovers</label>
+        <input id="uCount" type="number" value="1" min="1" max="3">
+        <label>Mr White ?</label>
+        <select id="whiteEnabled"><option value="no">Non</option><option value="yes">Oui</option></select>
+        <button id="startBtn">LANCER</button>
       </div>
-      
-      <p id="waitMsg" class="muted center" style="font-size: 14px;">
-        En attente du chef de groupe...
-      </p>
+      <p id="waitMsg" class="muted center">En attente du chef...</p>
     </div>
 
-    <!-- ÉCRAN DE JEU -->
+    <!-- JEU & CHAT -->
     <div id="gameSection" class="card hidden">
-      <div class="role-box">
-        <span class="muted">Ton rôle :</span>
-        <div id="myRole" style="font-size: 24px; font-weight: bold; margin-top: 5px;">---</div>
-        <div id="myWord" class="word-display">---</div>
-        <p class="instruction" id="roleDesc">Décris ton mot sans le dire !</p>
-        <button onclick="location.reload()" style="margin-top: 40px; background: rgba(255,255,255,0.05); color: white;">
-          Quitter la partie
-        </button>
+      <div style="display:flex; justify-content: space-between; align-items: center;">
+        <span id="displayRole" class="badge">ROLE</span>
+        <span id="displayWord" style="font-weight: bold; color: var(--accent);">MOT</span>
+      </div>
+      
+      <div id="turnIndicator" class="turn-indicator">Initialisation...</div>
+
+      <div id="chatBox" class="chat-box"></div>
+      
+      <div id="inputArea">
+        <input id="wordInput" type="text" placeholder="Ton indice..." maxlength="20">
+        <button id="sendBtn">Envoyer mon indice</button>
+      </div>
+
+      <div id="hostGameControls" class="hidden" style="margin-top: 15px;">
+        <button id="triggerVoteBtn" style="background: var(--danger); color: white;">Fin de discussion / Voter</button>
+      </div>
+    </div>
+
+    <!-- VOTE -->
+    <div id="voteSection" class="card hidden">
+      <h3 class="center">Qui est l'imposteur ?</h3>
+      <ul id="voteList" class="vote-list"></ul>
+      <p id="voteStatus" class="center muted">Vote en cours...</p>
+    </div>
+
+    <!-- RÉVÉLATION -->
+    <div id="resultSection" class="card hidden">
+      <div class="result-reveal">
+        <h2 id="resultTitle">Verdict</h2>
+        <div id="revealName" style="font-size: 24px; font-weight: 800; color: var(--danger);">---</div>
+        <p id="revealRoleText" class="muted">---</p>
+        <div id="revealWordBox" class="word-display">---</div>
+        <button id="nextRoundBtn" class="hidden">Tour suivant</button>
+        <p id="waitHostNext" class="muted">En attente du tour suivant...</p>
       </div>
     </div>
   </div>
@@ -207,74 +244,124 @@
     const sections = {
       login: document.getElementById('loginSection'),
       lobby: document.getElementById('lobbySection'),
-      game: document.getElementById('gameSection')
+      game: document.getElementById('gameSection'),
+      vote: document.getElementById('voteSection'),
+      result: document.getElementById('resultSection')
     };
+
+    let isMyTurn = false;
+    let isHost = false;
 
     function showSection(name) {
       Object.values(sections).forEach(s => s.classList.add('hidden'));
       sections[name].classList.remove('hidden');
     }
 
-    // Rejoindre
+    // --- ACTIONS ---
     document.getElementById('joinBtn').onclick = () => {
       const name = document.getElementById('playerName').value.trim();
-      if(name) {
-        socket.emit('joinGame', name);
-        showSection('lobby');
+      if(name) { socket.emit('joinGame', name); showSection('lobby'); }
+    };
+
+    document.getElementById('startBtn').onclick = () => {
+      socket.emit('requestStart', {
+        uCount: parseInt(document.getElementById('uCount').value),
+        whiteEnabled: document.getElementById('whiteEnabled').value === 'yes'
+      });
+    };
+
+    document.getElementById('sendBtn').onclick = () => {
+      const val = document.getElementById('wordInput').value.trim();
+      if(val && isMyTurn) {
+        socket.emit('sendWord', val);
+        document.getElementById('wordInput').value = '';
       }
     };
 
-    // Lancer
-    document.getElementById('startBtn').onclick = () => {
-      const config = {
-        uCount: parseInt(document.getElementById('uCount').value),
-        whiteEnabled: document.getElementById('whiteEnabled').value === 'yes'
-      };
-      socket.emit('requestStart', config);
-    };
+    document.getElementById('triggerVoteBtn').onclick = () => socket.emit('startVotePhase');
+    document.getElementById('nextRoundBtn').onclick = () => socket.emit('requestNextRound');
 
-    // Mise à jour du Lobby
+    // --- SOCKETS ---
     socket.on('lobbyUpdate', (players) => {
       const list = document.getElementById('playerList');
-      document.getElementById('playerCount').textContent = `${players.length} joueur${players.length > 1 ? 's' : ''}`;
-      
       list.innerHTML = players.map(p => `
         <li class="player-item">
-          <span>${p.name} ${p.id === socket.id ? '<strong>(Toi)</strong>' : ''}</span>
+          <span>${p.name} ${p.id === socket.id ? '<b>(Toi)</b>' : ''}</span>
           ${p.isHost ? '<span class="badge">HÔTE</span>' : ''}
         </li>
       `).join('');
-
+      
       const me = players.find(p => p.id === socket.id);
-      if(me && me.isHost) {
+      isHost = me?.isHost;
+      if(isHost) {
         document.getElementById('hostControls').classList.remove('hidden');
         document.getElementById('waitMsg').classList.add('hidden');
-      } else {
-        document.getElementById('hostControls').classList.add('hidden');
-        document.getElementById('waitMsg').classList.remove('hidden');
       }
     });
 
-    // Début de partie
     socket.on('gameStarted', (data) => {
       showSection('game');
-      const roleEl = document.getElementById('myRole');
-      const wordEl = document.getElementById('myWord');
-      const descEl = document.getElementById('roleDesc');
+      document.getElementById('displayRole').textContent = data.role.toUpperCase();
+      document.getElementById('displayWord').textContent = data.role === 'mr_white' ? '???' : data.word;
+      document.getElementById('chatBox').innerHTML = '';
+      if(isHost) document.getElementById('hostGameControls').classList.remove('hidden');
+    });
 
-      roleEl.textContent = data.role.toUpperCase();
+    socket.on('updateTurn', (turnData) => {
+      const indicator = document.getElementById('turnIndicator');
+      const input = document.getElementById('wordInput');
+      const btn = document.getElementById('sendBtn');
       
-      if(data.role === 'mr_white') {
-        roleEl.style.color = '#ff4444';
-        wordEl.textContent = "???";
-        descEl.textContent = "Devine le mot des autres pour gagner.";
+      isMyTurn = (turnData.currentId === socket.id);
+      indicator.textContent = isMyTurn ? "À TOI DE PARLER !" : `C'est au tour de : ${turnData.currentName}`;
+      indicator.style.color = isMyTurn ? "var(--accent)" : "white";
+      
+      input.disabled = !isMyTurn;
+      btn.disabled = !isMyTurn;
+    });
+
+    socket.on('newWord', (data) => {
+      const chat = document.getElementById('chatBox');
+      chat.innerHTML += `<div class="chat-msg"><b>${data.name} :</b> ${data.word}</div>`;
+      chat.scrollTop = chat.scrollHeight;
+    });
+
+    socket.on('votePhaseStarted', (alivePlayers) => {
+      showSection('vote');
+      const list = document.getElementById('voteList');
+      list.innerHTML = alivePlayers
+        .filter(p => p.id !== socket.id)
+        .map(p => `<li class="vote-item" onclick="castVote(this, '${p.id}')">${p.name}</li>`)
+        .join('');
+    });
+
+    window.castVote = (el, targetId) => {
+      document.querySelectorAll('.vote-item').forEach(i => i.classList.remove('selected'));
+      el.classList.add('selected');
+      socket.emit('castVote', targetId);
+    };
+
+    socket.on('playerEliminated', (data) => {
+      showSection('result');
+      document.getElementById('revealName').textContent = data.name;
+      document.getElementById('revealRoleText').textContent = `Était : ${data.role.toUpperCase()}`;
+      document.getElementById('revealWordBox').textContent = data.word || "???";
+      
+      if(isHost) {
+        document.getElementById('nextRoundBtn').classList.remove('hidden');
+        document.getElementById('waitHostNext').classList.add('hidden');
       } else {
-        roleEl.style.color = 'var(--accent)';
-        wordEl.textContent = data.word;
-        descEl.textContent = data.role === 'undercover' 
-          ? "Tu es l'Undercover. Ton mot est différent." 
-          : "Tu es Citoyen. Trouve l'intrus !";
+        document.getElementById('nextRoundBtn').classList.add('hidden');
+        document.getElementById('waitHostNext').classList.remove('hidden');
       }
+    });
+
+    socket.on('gameOver', (data) => {
+      showSection('result');
+      document.getElementById('resultTitle').textContent = "FIN DE PARTIE";
+      document.getElementById('revealName').textContent = data.winner === 'citizens' ? "VICTOIRE CITOYENS" : "L'IMPOSTEUR A GAGNÉ";
+      document.getElementById('revealRoleText').textContent = "Redirection au lobby...";
+      setTimeout(() => location.reload(), 5000);
     });
 
     socket.on('errorMsg', (msg) => alert(msg));
