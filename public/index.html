@@ -361,6 +361,7 @@
         document.getElementById('submitVoteBtn').classList.remove('hidden');
         document.getElementById('submitVoteBtn').disabled = true;
         document.getElementById('voteStatus').classList.add('hidden');
+        document.getElementById('voteStatus').textContent = "Vote envoyé. En attente des autres...";
       });
 
       // Retour au jeu pour le tour suivant
@@ -393,12 +394,20 @@
         btn.disabled = true;
         btn.classList.remove('hidden');
         document.getElementById('voteStatus').classList.add('hidden');
+        document.getElementById('voteStatus').textContent = "Vote envoyé. En attente des autres..."; // Reset msg
 
         const list = document.getElementById('voteList');
         list.innerHTML = alivePlayers
           .filter(p => p.id !== socket.id)
           .map(p => `<li class="vote-item" onclick="selectVote(this, '${p.id}')">${p.name}</li>`)
           .join('');
+      });
+      
+      // NOUVEAU: Affichage de la progression des votes
+      socket.on('voteUpdate', (data) => {
+          const status = document.getElementById('voteStatus');
+          status.classList.remove('hidden');
+          status.textContent = `Vote enregistré (${data.count}/${data.total} joueurs ont voté)...`;
       });
 
       window.selectVote = (el, targetId) => {
