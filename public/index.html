@@ -3,19 +3,52 @@
 <head>
     <title>Undercover Online</title>
     <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f0f0; }
+        .card { background: white; padding: 20px; border-radius: 10px; display: inline-block; margin-top: 50px; }
+    </style>
 </head>
 <body>
-    <h1>Undercover</h1>
-    <input id="name" placeholder="Ton pseudo">
-    <button onclick="rejoindre()">Rejoindre</button>
+    <div class="card">
+        <h1>Undercover</h1>
+        <div id="login">
+            <input id="name" placeholder="Ton pseudo">
+            <button onclick="rejoindre()">Rejoindre</button>
+        </div>
+        <div id="lobby" style="display:none;">
+            <h3>Joueurs connectés :</h3>
+            <ul id="playerList"></ul>
+            <button onclick="lancer()">Lancer la partie</button>
+        </div>
+        <div id="game" style="display:none;">
+            <h2 id="roleDisplay"></h2>
+            <p>Ton mot est : <strong id="wordDisplay"></strong></p>
+        </div>
+    </div>
 
     <script>
         const socket = io();
         function rejoindre() {
             const name = document.getElementById('name').value;
+            if(!name) return;
             socket.emit('joinGame', name);
-            alert("Tu as rejoint la partie !");
+            document.getElementById('login').style.display = 'none';
+            document.getElementById('lobby').style.display = 'block';
         }
+
+        function lancer() { socket.emit('startGame'); }
+
+        socket.on('updatePlayerList', (players) => {
+            const list = document.getElementById('playerList');
+            list.innerHTML = players.map(p => `<li>${p.name}</li>`).join('');
+        });
+
+        socket.on('receiveRole', (data) => {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+            document.getElementById('roleDisplay').innerText = "Tu es : " + data.role;
+            document.getElementById('wordDisplay').innerText = data.word;
+        });
     </script>
 </body>
 </html>
