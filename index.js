@@ -8,39 +8,57 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-let players = []; // Liste des joueurs connectés
+let players = [];
+const WORD_PAIRS = [
+    ["Pomme", "Poire"], ["Chien", "Loup"], ["Avion", "Hélicoptère"],
+    ["Pizza", "Burger"], ["Stylo", "Crayon"], ["Chat", "Lynx"]
+];
 
 io.on('connection', (socket) => {
-    console.log('Nouveau joueur connecté:', socket.id);
+    console.log('Connexion:', socket.id);
 
     socket.on('joinGame', (username) => {
-        players.push({ id: socket.id, name: username, role: 'En attente...' });
-        io.emit('updatePlayerList', players); // On prévient tout le monde
+        // Le premier arrivé devient l'hôte
+        const isHost = players.length === 0;
+        players.push({ id: socket.id, name: username, isHost: isHost });
+        io.emit('lobbyUpdate', players);
     });
 
-    socket.on('startGame', () => {
-        if (players.length < 3) return; // Il faut au moins 3 joueurs
+    socket.on('requestStart', (config) => {
+        if (players.length < 3) {
+            return socket.emit('errorMsg', 'Il faut au moins 3 joueurs !');
+        }
 
-        // Choix aléatoire de l'Undercover
-        const undercoverIndex = Math.floor(Math.random() * players.length);
+        // 1. Choix des mots
+        const pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
         
+        // 2. Préparation des rôles
+        let roles = [];
+        for (let i = 0; i < config.uCount; i++) roles.push('undercover');
+        if (config.whiteEnabled) roles.push('mr_white');
+        while (roles.length < players.length) roles.push('citizen');
+
+        // 3. Mélange des rôles
+        roles = roles.sort(() => Math.random() - 0.5);
+
+        // 4. Envoi individuel à chaque joueur
         players.forEach((player, index) => {
-            if (index === undercoverIndex) {
-                player.role = 'Undercover';
-                player.word = 'Loup'; // Exemple
-            } else {
-                player.role = 'Civil';
-                player.word = 'Chien'; // Exemple
-            }
-            io.to(player.id).emit('receiveRole', { role: player.role, word: player.word });
+            const myRole = roles[index];
+            const myWord = (myRole === 'undercover') ? pair[1] : (myRole === 'mr_white' ? '???' : pair[0]);
+            
+            io.to(player.id).emit('gameStarted', {
+                role: myRole,
+                word: myWord
+            });
         });
     });
 
     socket.on('disconnect', () => {
         players = players.filter(p => p.id !== socket.id);
-        io.emit('updatePlayerList', players);
+        if (players.length > 0) players[0].isHost = true; // Nouvel hôte si l'ancien part
+        io.emit('lobbyUpdate', players);
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Serveur sur le port ${PORT}`));
+server.listen(PORT, () => console.log(`Serveur prêt sur le port ${PORT}`));
