@@ -12,6 +12,7 @@
       --accent: #38bdf8;
       --muted: #94a3b8;
       --danger: #ef4444;
+      --success: #22c55e;
       --glass: rgba(255,255,255,0.03);
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
@@ -132,7 +133,7 @@
 
     .vote-item { cursor: pointer; transition: 0.2s; }
     .vote-item:hover { border-color: var(--accent); }
-    .vote-item.selected { background: var(--accent); color: #000; }
+    .vote-item.selected { background: var(--accent); color: #000; border-color: var(--accent); }
 
     .badge {
       font-size: 10px;
@@ -161,6 +162,13 @@
     }
 
     .center { text-align: center; }
+    
+    .winner-title {
+        color: var(--success);
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
@@ -215,31 +223,44 @@
     <!-- VOTE -->
     <div id="voteSection" class="card hidden">
       <h3 class="center">Qui est l'imposteur ?</h3>
+      <p class="center muted" style="font-size:14px; margin-bottom:15px;">Sélectionne un joueur puis valide ton choix.</p>
       <ul id="voteList" class="vote-list"></ul>
-      <p id="voteStatus" class="center muted">Votez tous !</p>
+      <button id="submitVoteBtn" disabled style="background: var(--danger); color: white;">Valider mon vote</button>
+      <p id="voteStatus" class="center muted hidden" style="margin-top:10px">Vote envoyé. En attente des autres...</p>
     </div>
 
     <!-- RÉSULTAT -->
     <div id="resultSection" class="card hidden">
       <div class="center">
+        <!-- Zone de verdict (élimination ou victoire) -->
         <h2 id="resultTitle">Verdict</h2>
-        <div id="revealName" style="font-size: 24px; font-weight: 800; color: var(--danger);">---</div>
-        <p id="revealRoleText" class="muted">---</p>
-        <div id="revealWordBox" class="word-display">---</div>
-        <button id="nextRoundBtn" class="hidden">Nouvelle Partie</button>
+        
+        <div id="winnerDisplay" class="hidden">
+            <div id="winnerText" class="winner-title">VICTOIRE</div>
+            <p class="muted">La partie est terminée.</p>
+        </div>
+
+        <div id="eliminationDisplay">
+            <div id="revealName" style="font-size: 24px; font-weight: 800; color: var(--danger);">---</div>
+            <p id="revealRoleText" class="muted">---</p>
+            <div id="revealWordBox" class="word-display">---</div>
+        </div>
+
+        <!-- Boutons de contrôle -->
+        <div id="nextRoundControls" class="hidden" style="margin-top: 20px;">
+            <button id="nextTurnBtn">Tour suivant (Continuer)</button>
+        </div>
+        
+        <div id="newGameControls" class="hidden" style="margin-top: 20px;">
+             <button id="newGameBtn">Retour au Lobby</button>
+        </div>
+
+        <p id="waitHostNext" class="muted" style="margin-top:15px;">En attente de l'hôte...</p>
       </div>
     </div>
   </div>
 
   <script>
-    // --- BASE DE DONNÉES DE MOTS ---
-    const WORD_PAIRS = [
-      ["Pomme", "Poire"], ["Chat", "Chien"], ["Avion", "Hélicoptère"],
-      ["Boulangerie", "Pâtisserie"], ["Plage", "Piscine"], ["Livre", "Magazine"],
-      ["Café", "Thé"], ["Ordinateur", "Tablette"], ["Lune", "Soleil"],
-      ["Guitare", "Piano"], ["Football", "Rugby"], ["Pizza", "Burger"]
-    ];
-
     let socket;
     try { socket = io(); } catch(e) { console.error("Socket.io indisponible."); }
 
@@ -254,7 +275,7 @@
     let isMyTurn = false;
     let isHost = false;
     let myName = "";
-    let myId = "";
+    let selectedVoteId = null;
 
     function showSection(name) {
       Object.values(sections).forEach(s => s.classList.add('hidden'));
@@ -266,7 +287,6 @@
     document.getElementById('joinBtn').onclick = () => {
       myName = document.getElementById('playerName').value.trim();
       if(!myName) return;
-      myId = Math.random().toString(36).substr(2, 9);
       if(socket) socket.emit('joinGame', myName);
       showSection('lobby');
     };
@@ -289,9 +309,26 @@
       if(socket) socket.emit('startVotePhase');
     };
 
-    document.getElementById('nextRoundBtn').onclick = () => {
-      location.reload();
+    // Validation du vote
+    document.getElementById('submitVoteBtn').onclick = () => {
+        if(selectedVoteId && socket) {
+            socket.emit('castVote', selectedVoteId);
+            document.getElementById('submitVoteBtn').classList.add('hidden');
+            document.getElementById('voteStatus').classList.remove('hidden');
+            document.querySelectorAll('.vote-item').forEach(el => el.style.pointerEvents = 'none');
+        }
     };
+
+    // Tour suivant (si pas fini)
+    document.getElementById('nextTurnBtn').onclick = () => {
+        if(socket) socket.emit('requestNextRound');
+    };
+
+    // Nouvelle partie (si fini)
+    document.getElementById('newGameBtn').onclick = () => {
+        location.reload();
+    };
+
 
     // --- RÉCEPTION SOCKETS ---
 
@@ -312,9 +349,27 @@
 
       socket.on('gameStarted', (data) => {
         showSection('game');
+        // Reset du chat pour la nouvelle partie
+        if(data.isNewGame) document.getElementById('chatBox').innerHTML = ''; 
+        
         document.getElementById('displayRole').textContent = data.role.toUpperCase();
         document.getElementById('displayWord').textContent = data.role === 'mr_white' ? '???' : data.word;
+        
         if(isHost) document.getElementById('hostGameControls').classList.remove('hidden');
+        
+        // Reset UI vote
+        document.getElementById('submitVoteBtn').classList.remove('hidden');
+        document.getElementById('submitVoteBtn').disabled = true;
+        document.getElementById('voteStatus').classList.add('hidden');
+      });
+
+      // Retour au jeu pour le tour suivant
+      socket.on('nextRoundStarted', () => {
+          showSection('game');
+          // On garde le chat pour l'historique, mais on pourrait ajouter un séparateur
+          const chat = document.getElementById('chatBox');
+          chat.innerHTML += `<div class="center muted" style="margin:10px 0; font-size:12px;">--- NOUVEAU TOUR ---</div>`;
+          chat.scrollTop = chat.scrollHeight;
       });
 
       socket.on('updateTurn', (turnData) => {
@@ -333,26 +388,77 @@
 
       socket.on('votePhaseStarted', (alivePlayers) => {
         showSection('vote');
+        selectedVoteId = null;
+        const btn = document.getElementById('submitVoteBtn');
+        btn.disabled = true;
+        btn.classList.remove('hidden');
+        document.getElementById('voteStatus').classList.add('hidden');
+
         const list = document.getElementById('voteList');
-        // On peut voter pour tout le monde SAUF soi-même, y compris le Maître du jeu
         list.innerHTML = alivePlayers
           .filter(p => p.id !== socket.id)
-          .map(p => `<li class="vote-item" onclick="castVote(this, '${p.id}')">${p.name}</li>`)
+          .map(p => `<li class="vote-item" onclick="selectVote(this, '${p.id}')">${p.name}</li>`)
           .join('');
       });
 
-      window.castVote = (el, targetId) => {
+      window.selectVote = (el, targetId) => {
         document.querySelectorAll('.vote-item').forEach(i => i.classList.remove('selected'));
         el.classList.add('selected');
-        socket.emit('castVote', targetId);
+        selectedVoteId = targetId;
+        document.getElementById('submitVoteBtn').disabled = false;
       };
 
       socket.on('playerEliminated', (data) => {
         showSection('result');
+        
+        // Affichage des infos de l'éliminé
         document.getElementById('revealName').textContent = data.name;
         document.getElementById('revealRoleText').textContent = `Était : ${data.role.toUpperCase()}`;
         document.getElementById('revealWordBox').textContent = data.word || "???";
-        if(isHost) document.getElementById('nextRoundBtn').classList.remove('hidden');
+
+        // Gestion Victoire vs Continuation
+        const winnerBlock = document.getElementById('winnerDisplay');
+        const nextControls = document.getElementById('nextRoundControls');
+        const newGameControls = document.getElementById('newGameControls');
+        const eliminationBlock = document.getElementById('eliminationDisplay');
+        const waitMsg = document.getElementById('waitHostNext');
+
+        if (data.winner) {
+            // C'est fini !
+            eliminationBlock.style.display = 'block'; // On montre quand même le dernier tué
+            winnerBlock.classList.remove('hidden');
+            
+            let winText = "";
+            if(data.winner === 'citizens') winText = "VICTOIRE DES CITOYENS !";
+            else if(data.winner === 'undercover') winText = "VICTOIRE DES UNDERCOVERS !";
+            else if(data.winner === 'mr_white') winText = "VICTOIRE DE MR WHITE !";
+            
+            document.getElementById('winnerText').textContent = winText;
+            
+            newGameControls.classList.remove('hidden');
+            nextControls.classList.add('hidden');
+            waitMsg.classList.add('hidden');
+        } else {
+            // Partie continue
+            winnerBlock.classList.add('hidden');
+            eliminationBlock.style.display = 'block';
+            newGameControls.classList.add('hidden');
+            
+            if(isHost) {
+                nextControls.classList.remove('hidden');
+                waitMsg.classList.add('hidden');
+            } else {
+                nextControls.classList.add('hidden');
+                waitMsg.classList.remove('hidden');
+            }
+        }
+      });
+      
+      socket.on('gameOver', (data) => {
+        // Fallback si gameOver est envoyé séparément
+        showSection('result');
+        document.getElementById('resultTitle').textContent = "FIN DE PARTIE";
+        // ... (Logique similaire à ci-dessus si besoin)
       });
       
       socket.on('errorMsg', (msg) => alert(msg));
