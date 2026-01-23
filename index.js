@@ -1,64 +1,70 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 let players = [];
-const WORD_PAIRS = [
-    ["Pomme", "Poire"], ["Chien", "Loup"], ["Avion", "Hélicoptère"],
-    ["Pizza", "Burger"], ["Stylo", "Crayon"], ["Chat", "Lynx"]
-];
+let gameStarted = false;
 
 io.on('connection', (socket) => {
-    console.log('Connexion:', socket.id);
-
-    socket.on('joinGame', (username) => {
-        // Le premier arrivé devient l'hôte
-        const isHost = players.length === 0;
-        players.push({ id: socket.id, name: username, isHost: isHost });
+    // Gestion de la connexion
+    socket.on('joinGame', (name) => {
+        const player = {
+            id: socket.id,
+            name: name,
+            isHost: players.length === 0,
+            alive: true,
+            role: '',
+            word: ''
+        };
+        players.push(player);
         io.emit('lobbyUpdate', players);
     });
 
-    socket.on('requestStart', (config) => {
-        if (players.length < 3) {
-            return socket.emit('errorMsg', 'Il faut au moins 3 joueurs !');
-        }
-
-        // 1. Choix des mots
-        const pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    // Lancement du jeu
+    socket.on('requestStart', (settings) => {
+        if (players.length < 3) return socket.emit('errorMsg', 'Il faut au moins 3 joueurs !');
         
-        // 2. Préparation des rôles
-        let roles = [];
-        for (let i = 0; i < config.uCount; i++) roles.push('undercover');
-        if (config.whiteEnabled) roles.push('mr_white');
-        while (roles.length < players.length) roles.push('citizen');
-
-        // 3. Mélange des rôles
-        roles = roles.sort(() => Math.random() - 0.5);
-
-        // 4. Envoi individuel à chaque joueur
-        players.forEach((player, index) => {
-            const myRole = roles[index];
-            const myWord = (myRole === 'undercover') ? pair[1] : (myRole === 'mr_white' ? '???' : pair[0]);
-            
-            io.to(player.id).emit('gameStarted', {
-                role: myRole,
-                word: myWord
-            });
+        gameStarted = true;
+        // Ici, on pourrait ajouter une logique de distribution de mots aléatoires
+        // Pour l'exemple, on envoie un mot fixe
+        players.forEach(p => {
+            p.role = 'Citoyen';
+            p.word = 'Pomme';
+            io.to(p.id).emit('gameStarted', { role: p.role, word: p.word });
         });
+        
+        io.emit('updateTurn', { currentId: players[0].id, currentName: players[0].name });
+    });
+
+    // Chat / Indices
+    socket.on('sendWord', (word) => {
+        const player = players.find(p => p.id === socket.id);
+        if (player) {
+            io.emit('newWord', { name: player.name, word: word });
+            // Logique de passage de tour simplifiée
+            const currentIndex = players.findIndex(p => p.id === socket.id);
+            const nextIndex = (currentIndex + 1) % players.length;
+            io.emit('updateTurn', { currentId: players[nextIndex].id, currentName: players[nextIndex].name });
+        }
+    });
+
+    // Vote
+    socket.on('startVotePhase', () => {
+        io.emit('votePhaseStarted', players.filter(p => p.alive));
     });
 
     socket.on('disconnect', () => {
         players = players.filter(p => p.id !== socket.id);
-        if (players.length > 0) players[0].isHost = true; // Nouvel hôte si l'ancien part
         io.emit('lobbyUpdate', players);
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Serveur prêt sur le port ${PORT}`));
+server.listen(PORT, () => console.log(`Serveur lancé sur le port ${PORT}`));
