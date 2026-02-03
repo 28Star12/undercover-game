@@ -17,7 +17,20 @@ const WORD_PAIRS = [
     ["Pomme", "Poire"], ["Chat", "Chien"], ["Avion", "Hélicoptère"],
     ["Boulangerie", "Pâtisserie"], ["Plage", "Piscine"], ["Livre", "Magazine"],
     ["Café", "Thé"], ["Ordinateur", "Tablette"], ["Lune", "Soleil"],
-    ["Guitare", "Piano"], ["Football", "Rugby"], ["Pizza", "Burger"]
+    ["Guitare", "Piano"], ["Football", "Rugby"], ["Pizza", "Burger"]["Voiture", "Vélo"],["Montagne", "Colline"],["École", "Université"],["Film", "Série"],["Chapeau", "Casquette"],["Fleur", "Arbre"],["Glace", "Sorbet"],["Stylo", "Crayon"],
+["Miroir", "Vitre"],
+["Roi", "Reine"],
+["Bouteille", "Verre"],
+["Train", "Bus"],
+["Pomme de terre", "Carotte"],
+["Lit", "Canapé"],
+["Oiseau", "Poisson"],
+["Chocolat", "Bonbon"],
+["Téléphone", "Ordinateur"],
+["Parapluie", "Imperméable"],
+["Étoile", "Planète"],
+["Pantalon", "Short"],
+["Théâtre", "Cinéma"]
 ];
 
 io.on('connection', (socket) => {
